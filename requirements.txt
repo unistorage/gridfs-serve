@@ -1,0 +1,2 @@
+Werkzeug==0.8.2
+pymongo==2.1
