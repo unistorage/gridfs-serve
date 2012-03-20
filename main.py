@@ -1,23 +1,26 @@
 # -*- coding: utf-8 -*-
 from werkzeug.wsgi import wrap_file
-from pymongo import ReplicaSetConnection
+from pymongo import ReplicaSetConnection, Connection, ReadPreference
 from werkzeug.wrappers import Request, Response
 from werkzeug.routing import Map, Rule
 from werkzeug.exceptions import abort, NotFound, HTTPException
 from gridfs import GridFS
-from pymongo import ReadPreference
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
 import re
+from random import choice
 import settings
 
 
 class GridFSServer(object):
 
     def __init__(self, conf):
-
-        con = ReplicaSetConnection('%s:%s'%(conf['mongo_host'], conf['mongo_port']),
-            replicaset=conf['replica_name'], read_preference = ReadPreference.SECONDARY)
+        if conf['repl_on']:
+            read_preference_random = choice([ReadPreference.PRIMARY, ReadPreference.SECONDARY])
+            con = ReplicaSetConnection(conf['repl_uri'],
+            replicaset=conf['replica_name'], read_preference = read_preference_random)
+        else:
+            con = Connection(conf['mongo_host'], conf['mongo_port'])
         self.fs = GridFS(con[conf['db_name']])
         self.url_map = Map([
             Rule('/<objid>', endpoint='get_file')
@@ -68,12 +71,15 @@ class GridFSServer(object):
     def __call__(self, environ, start_response):
         return self.wsgi_app(environ, start_response)
 
-def create_app(mongo_port=settings.MONGO_PORT,mongo_host=settings.MONGO_HOST, replica_name=settings.REPLICA_NAME, db_name=settings.DB_NAME):
+def create_app(mongo_port=settings.MONGO_PORT,mongo_host=settings.MONGO_HOST, replica_name=settings.REPLICA_NAME,
+               db_name=settings.DB_NAME, repl_on=settings.DB_REPL_ON, repl_uri=settings.DB_REPL_URI):
     app = GridFSServer({
         'mongo_port': mongo_port,
         'mongo_host': mongo_host,
         'replica_name':replica_name,
-        'db_name':db_name
+        'db_name':db_name,
+        'repl_uri':repl_uri,
+        'repl_on':repl_on
     })
 
     return app
