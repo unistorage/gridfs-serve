@@ -12,4 +12,9 @@ DB_NAME = 'grid_fs'
 APP_HOST = '0.0.0.0'
 APP_PORT = 5000
 DEBUG = True
-  
+
+
+try:
+    from settings_local import *
+except ImportError:
+    pass
