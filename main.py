@@ -18,7 +18,7 @@ class GridFSServer(object):
         if conf['repl_on']:
             read_preference_random = choice([ReadPreference.PRIMARY, ReadPreference.SECONDARY])
             con = ReplicaSetConnection(conf['repl_uri'],
-            replicaset=conf['replica_name'], read_preference = read_preference_random)
+                    replicaset=conf['replica_name'], read_preference=read_preference_random)
         else:
             con = Connection(conf['mongo_host'], conf['mongo_port'])
         self.fs = GridFS(con[conf['db_name']])
@@ -37,21 +37,23 @@ class GridFSServer(object):
         else:
             fs_file = self.fs.get(obj_id)
             m_type = fs_file.content_type
+            headers = {
+                'Content-Disposition': 'inline; filename=%s;' % fs_file.filename
+            }
             try:
-
                 if request.range:
-                    range_header =  re.findall(r'^bytes=(?P<start>\d+)-(?P<finish>\d+)$', str(request.range))
+                    range_header = re.findall(r'^bytes=(?P<start>\d+)-(?P<finish>\d+)$', str(request.range))
                     if range_header:
                         start, finish = int(range_header[0][0]), int(range_header[0][1])
-                        if finish>fs_file.length:
+                        if finish > fs_file.length:
                             abort(416)
                         fs_file.seek(start)
-                        fs_file = fs_file.read(finish-start)
-                        print fs_file
-                        return Response(fs_file, mimetype=m_type, status=206)
+                        fs_file = fs_file.read(finish - start)
+                        return Response(fs_file, mimetype=m_type, headers=headers, status=206)
             except ValueError:
                 abort(500)
-            return Response(wrap_file(request.environ, fs_file), mimetype=m_type)
+            
+            return Response(wrap_file(request.environ, fs_file), mimetype=m_type, headers=headers)
 
     def dispatch_request(self, request):
         adapter = self.url_map.bind_to_environ(request.environ)
