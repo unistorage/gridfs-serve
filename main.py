@@ -38,7 +38,7 @@ class GridFSServer(object):
             fs_file = self.fs.get(obj_id)
             m_type = fs_file.content_type
             headers = {
-                'Content-Disposition': 'inline; filename=%s;' % fs_file.filename
+                'Content-Disposition': 'inline; filename="%s";' % fs_file.filename
             }
             try:
                 if request.range:
@@ -52,7 +52,9 @@ class GridFSServer(object):
                         return Response(fs_file, mimetype=m_type, headers=headers, status=206)
             except ValueError:
                 abort(500)
-            
+            headers.update({
+                'Content-Length': fs_file.length
+            })
             return Response(wrap_file(request.environ, fs_file), mimetype=m_type, headers=headers)
 
     def dispatch_request(self, request):
