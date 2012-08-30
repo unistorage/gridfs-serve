@@ -1,19 +1,20 @@
 # -*- coding: utf-8 -*-
-from werkzeug.wsgi import wrap_file
+import re
+from random import choice
+from bson.objectid import ObjectId
+from bson.errors import InvalidId
+
 from pymongo import ReplicaSetConnection, Connection, ReadPreference
+from werkzeug.wsgi import wrap_file
 from werkzeug.wrappers import Request, Response
 from werkzeug.routing import Map, Rule
 from werkzeug.exceptions import abort, NotFound, HTTPException
 from gridfs import GridFS
-from bson.objectid import ObjectId
-from bson.errors import InvalidId
-import re
-from random import choice
+
 import settings
 
 
 class GridFSServer(object):
-
     def __init__(self, conf):
         if conf['repl_on']:
             read_preference_random = choice([ReadPreference.PRIMARY, ReadPreference.SECONDARY])
@@ -23,39 +24,55 @@ class GridFSServer(object):
             con = Connection(conf['mongo_host'], conf['mongo_port'])
         self.fs = GridFS(con[conf['db_name']])
         self.url_map = Map([
-            Rule('/<objid>', endpoint='get_file')
+            Rule('/<obj_id>', endpoint='get_file')
         ])
 
-    def on_get_file(self, request, objid):
+    def on_get_file(self, request, obj_id):
         try:
-            obj_id = ObjectId(objid)
+            obj_id = ObjectId(obj_id)
         except InvalidId:
             abort(404)
 
         if not self.fs.exists(obj_id):
             abort(404)
-        else:
-            fs_file = self.fs.get(obj_id)
-            m_type = fs_file.content_type
-            headers = {
-                'Content-Disposition': 'inline; filename="%s";' % fs_file.filename
-            }
-            try:
-                if request.range:
-                    range_header = re.findall(r'^bytes=(?P<start>\d+)-(?P<finish>\d+)$', str(request.range))
-                    if range_header:
-                        start, finish = int(range_header[0][0]), int(range_header[0][1])
-                        if finish > fs_file.length:
-                            abort(416)
-                        fs_file.seek(start)
-                        fs_file = fs_file.read(finish - start)
-                        return Response(fs_file, mimetype=m_type, headers=headers, status=206)
-            except ValueError:
-                abort(500)
-            headers.update({
-                'Content-Length': fs_file.length
-            })
-            return Response(wrap_file(request.environ, fs_file), mimetype=m_type, headers=headers)
+        
+        fs_file = self.fs.get(obj_id)
+        
+        if hasattr(fs_file, 'pending') and fs_file.pending:
+            if fs_file.extra and 'nginx_filter_args' in fs_file.extra:
+                nginx_filter_args = fs_file.extra['nginx_filter_args']
+                format_args = {
+                    'id': fs_file.original,
+                    'mode': nginx_filter_args['mode'],
+                    'w': nginx_filter_args['w'] or '-',
+                    'h': nginx_filter_args['h'] or '-'
+                }
+                internal_location = '/{mode}/{w}x{h}/{id}'.format(**format_args)
+                headers = {'X-Accel-Redirect': internal_location}
+                return Response(headers=headers, status=200)
+            else:
+                abort(404)
+
+        m_type = fs_file.content_type
+        headers = {
+            'Content-Disposition': 'inline; filename="%s";' % fs_file.filename
+        }
+        try:
+            if request.range:
+                range_header = re.findall(r'^bytes=(?P<start>\d+)-(?P<finish>\d+)$', str(request.range))
+                if range_header:
+                    start, finish = int(range_header[0][0]), int(range_header[0][1])
+                    if finish > fs_file.length:
+                        abort(416)
+                    fs_file.seek(start)
+                    fs_file = fs_file.read(finish - start)
+                    return Response(fs_file, mimetype=m_type, headers=headers, status=206)
+        except ValueError:
+            abort(500)
+        headers.update({
+            'Content-Length': fs_file.length
+        })
+        return Response(wrap_file(request.environ, fs_file), mimetype=m_type, headers=headers)
 
     def dispatch_request(self, request):
         adapter = self.url_map.bind_to_environ(request.environ)
@@ -75,19 +92,23 @@ class GridFSServer(object):
     def __call__(self, environ, start_response):
         return self.wsgi_app(environ, start_response)
 
+
 def create_app(mongo_port=settings.MONGO_PORT,mongo_host=settings.MONGO_HOST, replica_name=settings.REPLICA_NAME,
                db_name=settings.DB_NAME, repl_on=settings.DB_REPL_ON, repl_uri=settings.DB_REPL_URI):
     app = GridFSServer({
         'mongo_port': mongo_port,
         'mongo_host': mongo_host,
-        'replica_name':replica_name,
-        'db_name':db_name,
-        'repl_uri':repl_uri,
-        'repl_on':repl_on
+        'replica_name': replica_name,
+        'db_name': db_name,
+        'repl_uri': repl_uri,
+        'repl_on': repl_on
     })
 
     return app
+
+
 gridfs_serve = create_app()
+
 if __name__ == '__main__':
     from werkzeug.serving import run_simple
     app = create_app()

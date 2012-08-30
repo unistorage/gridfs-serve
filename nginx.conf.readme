@@ -1,0 +1,38 @@
+# Note: nginx must be built with `--with-http_image_filter_module` option.
+
+http {
+  # ...
+
+  upstream gfs {
+    server unix:/path/to/uwsgi.sock;
+  }
+      
+  server {
+    listen 8080;
+
+    location / {
+      uwsgi_pass gfs;
+      include uwsgi_params;
+    }
+
+    location ~ ^/resize/(?<w>\d+|-)x(?<h>\d+|-)/(?<id>.*)$ {
+      internal;
+      rewrite ^ /$id break;
+      include uwsgi_params;
+      uwsgi_pass gfs;
+      image_filter resize $w $h;
+      break;
+    }
+
+    location ~ ^/crop/(?<w>\d+|-)x(?<h>\d+|-)/(?<id>.*)$ {
+      internal;
+      rewrite ^ /$id break;
+      include uwsgi_params;
+      uwsgi_pass gfs;
+      image_filter crop $w $h;
+      break;
+    }
+  }
+
+  # ...
+}
