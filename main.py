@@ -37,22 +37,6 @@ class GridFSServer(object):
             abort(404)
         
         fs_file = self.fs.get(obj_id)
-        
-        if hasattr(fs_file, 'pending') and fs_file.pending:
-            if fs_file.extra and 'nginx_filter_args' in fs_file.extra:
-                nginx_filter_args = fs_file.extra['nginx_filter_args']
-                format_args = {
-                    'id': fs_file.original,
-                    'mode': nginx_filter_args['mode'],
-                    'w': nginx_filter_args['w'] or '-',
-                    'h': nginx_filter_args['h'] or '-'
-                }
-                internal_location = '/{mode}/{w}x{h}/{id}'.format(**format_args)
-                headers = {'X-Accel-Redirect': internal_location}
-                return Response(headers=headers, status=200)
-            else:
-                abort(404)
-
         m_type = fs_file.content_type
         headers = {
             'Content-Disposition': 'inline; filename="%s";' % fs_file.filename
