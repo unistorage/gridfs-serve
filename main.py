@@ -1,16 +1,14 @@
-import re
-from random import choice
-
-from pymongo import ReplicaSetConnection, Connection, ReadPreference
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
+
+from gridfs import GridFS
 from werkzeug.wsgi import wrap_file
 from werkzeug.wrappers import Request, Response
 from werkzeug.routing import Map, Rule
 from werkzeug.exceptions import abort, NotFound, HTTPException
-from gridfs import GridFS
 
 import settings
+import utils
 
 
 class GridFSServer(object):
@@ -19,45 +17,49 @@ class GridFSServer(object):
             Rule('/<obj_id>', endpoint='get_file')
         ])
 
-    def get_mongodb_connection(self):
-        if settings.MONGO_REPLICATION_ON:
-            read_preference_random = choice([ReadPreference.PRIMARY, ReadPreference.SECONDARY])
-            return ReplicaSetConnection(settings.MONGO_REPLICA_SET_URI,
-                        replicaset=settings.MONGO_REPLICA_SET_NAME)
-        else:
-            return Connection(settings.MONGO_HOST, settings.MONGO_PORT)
+    def serve_whole_file(self, request, headers, fs_file):
+        headers.update({
+            'Content-Length': fs_file.length
+        })
+        return Response(wrap_file(request.environ, fs_file),
+                        mimetype=fs_file.content_type, headers=headers)
+
+    def serve_partial(self, request, headers, fs_file, start, end):
+        headers.update({
+            'Content-Length': end - start
+        })
+        return Response(utils.LimitedFileWrapper(fs_file, start, end),
+                        mimetype=fs_file.content_type, headers=headers, status=206)
 
     def on_get_file(self, request, obj_id):
-        connection = self.get_mongodb_connection()
-        fs = GridFS(connection[settings.MONGO_DB_NAME])
-        try:
-            obj_id = ObjectId(obj_id)
-        except InvalidId:
-            abort(404)
+        with utils.MongoDBConnection() as connection:
+            fs = GridFS(connection[settings.MONGO_DB_NAME])
+            try:
+                fs_file = fs.get(ObjectId(obj_id))
+            except:
+                abort(404)
 
-        if not fs.exists(obj_id):
-            abort(404)
-        
-        fs_file = fs.get(obj_id)
-        headers = {
-            'Content-Disposition': 'inline; filename="%s";' % fs_file.filename
-        }
-        if request.range:
-            range_header = re.findall(r'^bytes=(?P<start>\d+)-(?P<finish>\d+)$', str(request.range))
-            if not range_header:
-                abort(400)
-            start, finish = map(int, range_header[0])
-            if finish > fs_file.length:
-                abort(416)
-            fs_file.seek(start)
-            return Response(fs_file.read(finish - start),
-                    mimetype=fs_file.content_type, headers=headers, status=206)
-        else:
-            headers.update({
-                'Content-Length': fs_file.length
-            })
-            return Response(wrap_file(request.environ, fs_file),
-                    mimetype=fs_file.content_type, headers=headers)
+            headers = {
+                'Content-Disposition': 'inline; filename="%s";' % fs_file.filename
+            }
+
+            if request.range:
+                if not request.range.units == 'bytes':
+                    abort(400)
+
+                ranges = request.range.ranges
+                if len(ranges) > 1:
+                    return self.serve_whole_file(headers, fs_file)
+
+                start, end = ranges[0]
+                if end is None:
+                    end = fs_file.length
+                elif end > fs_file.length:
+                    abort(416)
+
+                return self.serve_partial(request, headers, fs_file, start, end)
+            else:
+                return self.serve_whole_file(request, headers, fs_file)
 
     def dispatch_request(self, request):
         adapter = self.url_map.bind_to_environ(request.environ)
@@ -80,7 +82,8 @@ class GridFSServer(object):
 
 gridfs_serve = GridFSServer()
 
+
 if __name__ == '__main__':
     from werkzeug.serving import run_simple
     run_simple(settings.APP_HOST, settings.APP_PORT, gridfs_serve,
-            use_debugger=settings.DEBUG, use_reloader=True)
+               use_debugger=settings.DEBUG, use_reloader=True)
