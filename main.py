@@ -1,28 +1,14 @@
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
-from pymongo import ReplicaSetConnection, Connection
+
 from gridfs import GridFS
-from werkzeug.wsgi import wrap_file, FileWrapper
+from werkzeug.wsgi import wrap_file
 from werkzeug.wrappers import Request, Response
 from werkzeug.routing import Map, Rule
 from werkzeug.exceptions import abort, NotFound, HTTPException
 
 import settings
-
-
-class LimitedFileWrapper(FileWrapper):
-    def __init__(self, file, start, end, buffer_size=8192):
-        super(LimitedFileWrapper, self).__init__(file, buffer_size=buffer_size)
-        self.file.seek(start)
-        self._limit = end
-
-    def next(self):
-        buffer_size = min(self.buffer_size, self._limit - self.file.tell())
-        data = self.file.read(buffer_size)
-
-        if data:
-            return data
-        raise StopIteration()
+import utils
 
 
 class GridFSServer(object):
@@ -30,13 +16,6 @@ class GridFSServer(object):
         self.url_map = Map([
             Rule('/<obj_id>', endpoint='get_file')
         ])
-
-    def get_mongodb_connection(self):
-        if settings.MONGO_REPLICATION_ON:
-            return ReplicaSetConnection(settings.MONGO_REPLICA_SET_URI,
-                                        replicaset=settings.MONGO_REPLICA_SET_NAME)
-        else:
-            return Connection(settings.MONGO_HOST, settings.MONGO_PORT)
 
     def serve_whole_file(self, request, headers, fs_file):
         headers.update({
@@ -49,42 +28,38 @@ class GridFSServer(object):
         headers.update({
             'Content-Length': end - start
         })
-        return Response(LimitedFileWrapper(fs_file, start, end),
+        return Response(utils.LimitedFileWrapper(fs_file, start, end),
                         mimetype=fs_file.content_type, headers=headers, status=206)
 
     def on_get_file(self, request, obj_id):
-        connection = self.get_mongodb_connection()
-        fs = GridFS(connection[settings.MONGO_DB_NAME])
-        try:
-            obj_id = ObjectId(obj_id)
-        except InvalidId:
-            abort(404)
+        with utils.MongoDBConnection() as connection:
+            fs = GridFS(connection[settings.MONGO_DB_NAME])
+            try:
+                fs_file = fs.get(ObjectId(obj_id))
+            except:
+                abort(404)
 
-        if not fs.exists(obj_id):
-            abort(404)
+            headers = {
+                'Content-Disposition': 'inline; filename="%s";' % fs_file.filename
+            }
 
-        fs_file = fs.get(obj_id)
-        headers = {
-            'Content-Disposition': 'inline; filename="%s";' % fs_file.filename
-        }
+            if request.range:
+                if not request.range.units == 'bytes':
+                    abort(400)
 
-        if request.range:
-            if not request.range.units == 'bytes':
-                abort(400)
+                ranges = request.range.ranges
+                if len(ranges) > 1:
+                    return self.serve_whole_file(headers, fs_file)
 
-            ranges = request.range.ranges
-            if len(ranges) > 1:
-                return self.serve_whole_file(headers, fs_file)
+                start, end = ranges[0]
+                if end is None:
+                    end = fs_file.length
+                elif end > fs_file.length:
+                    abort(416)
 
-            start, end = ranges[0]
-            if end is None:
-                end = fs_file.length
-            if end > fs_file.length:
-                abort(416)
-
-            return self.serve_partial(request, headers, fs_file, start, end)
-        else:
-            return self.serve_whole_file(request, headers, fs_file)
+                return self.serve_partial(request, headers, fs_file, start, end)
+            else:
+                return self.serve_whole_file(request, headers, fs_file)
 
     def dispatch_request(self, request):
         adapter = self.url_map.bind_to_environ(request.environ)

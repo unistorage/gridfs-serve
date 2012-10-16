@@ -9,13 +9,14 @@ from gridfs import GridFS
 
 import settings
 import main
+import utils
 
 
 class Test(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.app = TestApp(main.gridfs_serve)
-        cls.db = main.gridfs_serve.get_mongodb_connection()[settings.MONGO_DB_NAME]
+        cls.db = utils.get_mongodb_connection()[settings.MONGO_DB_NAME]
         cls.fs = GridFS(cls.db)
 
     def put_file(self, path):
