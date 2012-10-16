@@ -40,13 +40,18 @@ class Test(unittest.TestCase):
         file_path = './tests/jpg.jpg'
         file_id = self.put_file(file_path)
         
-        content = self.get_file(file_id, headers={'Range': 'bytes=0-400'})
+        content = self.get_file(file_id, headers={'Range': 'bytes=0-399'})
         self.assertEquals(open(file_path).read(400), content.read())
         
-        content = self.get_file(file_id, headers={'Range': 'bytes=400-450'})
+        content = self.get_file(file_id, headers={'Range': 'bytes=400-449'})
         f = open(file_path)
         f.seek(400)
         self.assertEquals(f.read(50), content.read())
+
+        content = self.get_file(file_id, headers={'Range': 'bytes=400-'})
+        f = open(file_path)
+        f.seek(400)
+        self.assertEquals(f.read(), content.read())
 
     def test_404(self):
         r = self.app.get('/123456789123456789012345', status='*')

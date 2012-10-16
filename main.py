@@ -1,16 +1,28 @@
-import re
-from random import choice
-
-from pymongo import ReplicaSetConnection, Connection, ReadPreference
 from bson.objectid import ObjectId
 from bson.errors import InvalidId
-from werkzeug.wsgi import wrap_file
+from pymongo import ReplicaSetConnection, Connection
+from gridfs import GridFS
+from werkzeug.wsgi import wrap_file, FileWrapper
 from werkzeug.wrappers import Request, Response
 from werkzeug.routing import Map, Rule
 from werkzeug.exceptions import abort, NotFound, HTTPException
-from gridfs import GridFS
 
 import settings
+
+
+class LimitedFileWrapper(FileWrapper):
+    def __init__(self, file, start, end, buffer_size=8192):
+        super(LimitedFileWrapper, self).__init__(file, buffer_size=buffer_size)
+        self.file.seek(start)
+        self._limit = end
+
+    def next(self):
+        buffer_size = min(self.buffer_size, self._limit - self.file.tell())
+        data = self.file.read(buffer_size)
+
+        if data:
+            return data
+        raise StopIteration()
 
 
 class GridFSServer(object):
@@ -21,11 +33,24 @@ class GridFSServer(object):
 
     def get_mongodb_connection(self):
         if settings.MONGO_REPLICATION_ON:
-            read_preference_random = choice([ReadPreference.PRIMARY, ReadPreference.SECONDARY])
             return ReplicaSetConnection(settings.MONGO_REPLICA_SET_URI,
-                        replicaset=settings.MONGO_REPLICA_SET_NAME)
+                                        replicaset=settings.MONGO_REPLICA_SET_NAME)
         else:
             return Connection(settings.MONGO_HOST, settings.MONGO_PORT)
+
+    def serve_whole_file(self, request, headers, fs_file):
+        headers.update({
+            'Content-Length': fs_file.length
+        })
+        return Response(wrap_file(request.environ, fs_file),
+                        mimetype=fs_file.content_type, headers=headers)
+
+    def serve_partial(self, request, headers, fs_file, start, end):
+        headers.update({
+            'Content-Length': end - start
+        })
+        return Response(LimitedFileWrapper(fs_file, start, end),
+                        mimetype=fs_file.content_type, headers=headers, status=206)
 
     def on_get_file(self, request, obj_id):
         connection = self.get_mongodb_connection()
@@ -37,27 +62,29 @@ class GridFSServer(object):
 
         if not fs.exists(obj_id):
             abort(404)
-        
+
         fs_file = fs.get(obj_id)
         headers = {
             'Content-Disposition': 'inline; filename="%s";' % fs_file.filename
         }
+
         if request.range:
-            range_header = re.findall(r'^bytes=(?P<start>\d+)-(?P<finish>\d+)$', str(request.range))
-            if not range_header:
+            if not request.range.units == 'bytes':
                 abort(400)
-            start, finish = map(int, range_header[0])
-            if finish > fs_file.length:
+
+            ranges = request.range.ranges
+            if len(ranges) > 1:
+                return self.serve_whole_file(headers, fs_file)
+
+            start, end = ranges[0]
+            if end is None:
+                end = fs_file.length
+            if end > fs_file.length:
                 abort(416)
-            fs_file.seek(start)
-            return Response(fs_file.read(finish - start),
-                    mimetype=fs_file.content_type, headers=headers, status=206)
+
+            return self.serve_partial(request, headers, fs_file, start, end)
         else:
-            headers.update({
-                'Content-Length': fs_file.length
-            })
-            return Response(wrap_file(request.environ, fs_file),
-                    mimetype=fs_file.content_type, headers=headers)
+            return self.serve_whole_file(request, headers, fs_file)
 
     def dispatch_request(self, request):
         adapter = self.url_map.bind_to_environ(request.environ)
@@ -80,7 +107,8 @@ class GridFSServer(object):
 
 gridfs_serve = GridFSServer()
 
+
 if __name__ == '__main__':
     from werkzeug.serving import run_simple
     run_simple(settings.APP_HOST, settings.APP_PORT, gridfs_serve,
-            use_debugger=settings.DEBUG, use_reloader=True)
+               use_debugger=settings.DEBUG, use_reloader=True)
