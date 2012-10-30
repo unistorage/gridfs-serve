@@ -1,7 +1,21 @@
 from werkzeug.wsgi import FileWrapper
+from werkzeug.routing import BaseConverter, ValidationError
 from pymongo import ReplicaSetConnection, Connection
+from bson.objectid import ObjectId
+from bson.errors import InvalidId
 
 import settings
+
+
+class ObjectIdConverter(BaseConverter):
+    def to_python(self, value):
+        try:
+            return ObjectId(value)
+        except InvalidId:
+            raise ValidationError()
+
+    def to_url(self, value):
+        return str(value)
 
 
 class LimitedFileWrapper(FileWrapper):
