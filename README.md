@@ -1,3 +1,5 @@
+[![Build Status](https://secure.travis-ci.org/unistorage/gridfs-serve.png)](http://travis-ci.org/unistorage/gridfs-serve)
+
 Настройки
 =========
 Настройки хранятся в settings.py. В секции mongo указываются параметры подключения к монге, в секции app указываются параметры для запуска приложения на встроенном серверею
