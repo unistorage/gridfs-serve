@@ -56,7 +56,7 @@ def serve_request(request, _id=None):
 
 
 url_map = Map([
-    Rule('/<ObjectId:_id>/')
+    Rule('/<ObjectId:_id>')
 ], converters={
     'ObjectId': ObjectIdConverter
 })
