@@ -25,7 +25,7 @@ class Test(unittest.TestCase):
         return self.fs.put(f.read(), filename=filename)
 
     def get_file(self, _id, headers={}):
-        r = self.app.get('/%s/' % _id, headers=headers)
+        r = self.app.get('/%s' % _id, headers=headers)
         content = StringIO(r._app_iter[0])
         return content
 
@@ -33,9 +33,11 @@ class Test(unittest.TestCase):
         file_path = './tests/jpg.jpg'
         file_id = self.put_file(file_path)
         
-        r = self.app.get('/%s/' % file_id)
+        r = self.app.get('/%s' % file_id)
         content = StringIO(r._app_iter[0])
         self.assertEquals(open(file_path).read(), content.read())
+        
+        self.app.get('/%s/' % file_id, status=404)
 
     def test_range(self):
         file_path = './tests/jpg.jpg'
@@ -55,5 +57,5 @@ class Test(unittest.TestCase):
         self.assertEquals(f.read(), content.read())
 
     def test_404(self):
-        r = self.app.get('/12345678912346789012345/', status='*')
+        r = self.app.get('/12345678912346789012345', status='*')
         self.assertEquals(r.status_code, 404)
