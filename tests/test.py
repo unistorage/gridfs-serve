@@ -1,7 +1,9 @@
+import time
 import os.path
 import unittest
 from pprint import pprint
 from StringIO import StringIO
+from datetime import datetime, timedelta
 
 from bson.objectid import ObjectId
 from webtest import TestApp
@@ -55,6 +57,25 @@ class Test(unittest.TestCase):
         f = open(file_path)
         f.seek(400)
         self.assertEquals(f.read(), content.read())
+
+    def test_conditional_get(self):
+        file_path = './tests/jpg.jpg'
+        file_id = self.put_file(file_path)
+        
+        content = self.app.get('/%s' % file_id)
+        self.assertEquals(content.status_code, 200)
+        etag = content.headers['ETag']
+
+        time.sleep(1)
+
+        modified_header = (datetime.now() - timedelta(milliseconds=500)) \
+                .strftime('%a, %d %b %Y %H:%M:%S +0000')
+        
+        content = self.app.get('/%s' % file_id, headers={'If-Modified-Since': modified_header})
+        self.assertEquals(content.status_code, 304)
+        
+        content = self.app.get('/%s' % file_id, headers={'If-None-Match': etag})
+        self.assertEquals(content.status_code, 304)
 
     def test_404(self):
         r = self.app.get('/12345678912346789012345', status='*')

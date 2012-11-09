@@ -12,8 +12,11 @@ def serve_full_file_request(request, headers, file):
     headers.update({
         'Content-Length': file.length
     })
-    return Response(wrap_file(request.environ, file),
-                    mimetype=file.content_type, headers=headers)
+    response = Response(wrap_file(request.environ, file),
+                        mimetype=file.content_type, headers=headers)
+    response.last_modified = file.uploadDate
+    response.set_etag(file.md5)
+    return response
 
 
 def serve_partial_file_request(request, headers, file, start, end):
@@ -31,6 +34,13 @@ def serve_request(request, _id=None):
             file = fs.get(_id)
         except:
             abort(404)
+
+        if request.if_modified_since:
+            if request.if_modified_since > file.uploadDate:
+                return Response(status=304)
+        if request.if_none_match:
+            if request.if_none_match.contains(file.md5):
+                return Response(status=304)
 
         headers = {
             'Content-Disposition': 'inline; filename="%s";' % file.filename
