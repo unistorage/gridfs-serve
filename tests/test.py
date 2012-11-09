@@ -66,12 +66,13 @@ class Test(unittest.TestCase):
         self.assertEquals(content.status_code, 200)
         etag = content.headers['ETag']
 
-        time.sleep(1)
+        time.sleep(2)
 
-        modified_header = (datetime.now() - timedelta(milliseconds=500)) \
-                .strftime('%a, %d %b %Y %H:%M:%S +0000')
+        last_modified = time.strptime(content.headers['Last-Modified'], '%a, %d %b %Y %H:%M:%S %Z')
+        d = datetime.fromtimestamp(time.mktime(last_modified)) + timedelta(seconds=1)
+        if_modified_header = d.strftime('%a, %d %b %Y %H:%M:%S GMT')
         
-        content = self.app.get('/%s' % file_id, headers={'If-Modified-Since': modified_header})
+        content = self.app.get('/%s' % file_id, headers={'If-Modified-Since': if_modified_header})
         self.assertEquals(content.status_code, 304)
         
         content = self.app.get('/%s' % file_id, headers={'If-None-Match': etag})
