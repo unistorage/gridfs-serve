@@ -1,8 +1,11 @@
+from email.utils import encode_rfc2231
+
 from gridfs import GridFS
 from werkzeug.wsgi import wrap_file
 from werkzeug.wrappers import Request, Response
 from werkzeug.routing import Map, Rule
 from werkzeug.exceptions import abort, NotFound, HTTPException
+from unidecode import unidecode
 
 import settings
 from utils import ObjectIdConverter, LimitedFileWrapper, MongoDBConnection
@@ -42,9 +45,15 @@ def serve_request(request, _id=None):
             if request.if_none_match.contains(file.md5):
                 return Response(status=304)
 
-        headers = {
-            'Content-Disposition': 'inline; filename="%s";' % file.filename
-        }
+        filename = file.filename
+        # Process non-latin filenames using technique described here:
+        # http://greenbytes.de/tech/tc2231/#encoding-2231-fb
+        rfc2231_filename = encode_rfc2231(filename.encode('utf-8'), 'UTF-8')
+        transliterated_filename = unidecode(filename)
+        content_disposition = 'inline; filename="%s"; filename*=%s;' % \
+                (transliterated_filename, rfc2231_filename)
+
+        headers = {'Content-Disposition': content_disposition}
 
         if not request.range:
             return serve_full_file_request(request, headers, file)
