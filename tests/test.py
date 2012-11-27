@@ -1,3 +1,4 @@
+#-*- coding: UTF-8 -*-
 import time
 import os.path
 import unittest
@@ -81,3 +82,11 @@ class Test(unittest.TestCase):
     def test_404(self):
         r = self.app.get('/12345678912346789012345', status='*')
         self.assertEquals(r.status_code, 404)
+
+    def test_non_latin_filename(self):
+        file_path = u'./tests/русское название.jpg'
+        file_id = self.put_file(file_path)
+        
+        content = self.app.get('/%s' % file_id)
+        self.assertEquals(content.status_code, 200)
+        self.assertIn('russkoe nazvanie.jpg', content.headers['Content-Disposition'])
