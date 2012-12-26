@@ -24,7 +24,8 @@ def serve_full_file_request(request, headers, file):
 
 def serve_partial_file_request(request, headers, file, start, end):
     headers.update({
-        'Content-Length': end - start
+        'Content-Length': end - start,
+        'Content-Range': 'bytes=%i-%i/%i' % (start, end, file.length)    
     })
     return Response(LimitedFileWrapper(file, start, end),
                     mimetype=file.content_type, headers=headers, status=206)
