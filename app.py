@@ -13,7 +13,8 @@ from utils import ObjectIdConverter, LimitedFileWrapper, MongoDBConnection
 
 def serve_full_file_request(request, headers, file):
     headers.update({
-        'Content-Length': file.length
+        'Content-Length': file.length,
+        'Accept-Ranges': 'bytes'
     })
     response = Response(wrap_file(request.environ, file),
                         mimetype=file.content_type, headers=headers)
