@@ -14,7 +14,7 @@ from utils import ObjectIdConverter, LimitedFileWrapper, MongoDBConnection
 def serve_full_file_request(request, headers, file):
     headers.update({
         'Content-Length': file.length,
-        'Accept-Ranges': 'bytes'
+        'Accept-Ranges': 'bytes',
     })
     response = Response(wrap_file(request.environ, file),
                         mimetype=file.content_type, headers=headers)
@@ -27,7 +27,7 @@ def serve_partial_file_request(request, headers, file, start, end):
     # Note: byte positions are inclusive!
     headers.update({
         'Content-Length': end - start,
-        'Content-Range': 'bytes %i-%i/%i' % (start, end - 1, file.length)
+        'Content-Range': 'bytes %i-%i/%i' % (start, end - 1, file.length),
     })
     return Response(LimitedFileWrapper(file, start, end),
                     mimetype=file.content_type, headers=headers, status=206)
