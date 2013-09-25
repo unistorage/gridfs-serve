@@ -1,5 +1,7 @@
 import sys
 
+from pymongo.read_preferences import ReadPreference
+
 
 # Mongo section
 MONGO_HOST = 'localhost'
@@ -8,6 +10,7 @@ MONGO_DB_NAME = 'grid_fs'
 MONGO_REPLICATION_ON = True
 MONGO_REPLICA_SET_URI = 'localhost:27017,localhost:27018'
 MONGO_REPLICA_SET_NAME = 'test_set'
+MONGO_READ_PREFERENCE = ReadPreference.SECONDARY_PREFERRED
 
 # App section for builtin server
 APP_HOST = '0.0.0.0'

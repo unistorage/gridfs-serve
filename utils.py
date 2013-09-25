@@ -37,6 +37,7 @@ def get_mongodb_connection():
     if settings.MONGO_REPLICATION_ON:
         return MongoReplicaSetClient(
             settings.MONGO_REPLICA_SET_URI,
+            read_preference=settings.MONGO_READ_PREFERENCE,
             replicaset=settings.MONGO_REPLICA_SET_NAME, w=1)
     else:
         return MongoClient(settings.MONGO_HOST, settings.MONGO_PORT)
