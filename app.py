@@ -8,7 +8,7 @@ from werkzeug.exceptions import abort, NotFound, HTTPException
 from unidecode import unidecode
 
 import settings
-from utils import ObjectIdConverter, LimitedFileWrapper, get_mongodb_connection, MongoDBConnection
+from utils import ObjectIdConverter, LimitedFileWrapper, get_mongodb_connection
 
 
 def serve_full_file_request(request, headers, file, callbacks=[]):
@@ -18,7 +18,8 @@ def serve_full_file_request(request, headers, file, callbacks=[]):
     })
     file_iterator = wrap_file(request.environ, file)
     response = Response(ClosingIterator(file_iterator, callbacks=callbacks),
-                        mimetype=file.content_type, headers=headers)
+                        direct_passthrough=True, mimetype=file.content_type,
+                        headers=headers)
     response.last_modified = file.uploadDate
     response.set_etag(file.md5)
     return response
@@ -32,7 +33,8 @@ def serve_partial_file_request(request, headers, file, start, end, callbacks=[])
     })
     file_iterator = LimitedFileWrapper(file, start, end)
     return Response(ClosingIterator(file_iterator, callbacks=callbacks),
-                    mimetype=file.content_type, headers=headers, status=206)
+                    direct_passthrough=True, mimetype=file.content_type,
+                    headers=headers, status=206)
 
 
 def serve_request(request, connection, _id=None):
@@ -40,6 +42,9 @@ def serve_request(request, connection, _id=None):
     try:
         file = fs.get(_id)
     except:
+        abort(404)
+    
+    if getattr(file, 'pending', False):
         abort(404)
 
     if request.if_modified_since:
@@ -98,11 +103,10 @@ def app(request):
     connection = get_mongodb_connection()
     try:
         return serve_request(request, connection, **args)
-    except HTTPException, e:
+    except HTTPException as e:
         return e
     except:
         connection.close()
-
 
 
 if __name__ == '__main__':

@@ -6,7 +6,7 @@ from pprint import pprint
 from StringIO import StringIO
 from datetime import datetime, timedelta
 
-from bson.objectid import ObjectId
+from bson import ObjectId
 from webtest import TestApp
 from gridfs import GridFS
 
@@ -80,7 +80,7 @@ class Test(unittest.TestCase):
         self.assertEquals(content.status_code, 304)
 
     def test_404(self):
-        r = self.app.get('/12345678912346789012345', status='*')
+        r = self.app.get('/12345678912346789012345', expect_errors=True)
         self.assertEquals(r.status_code, 404)
 
     def test_non_latin_filename(self):
@@ -90,3 +90,10 @@ class Test(unittest.TestCase):
         content = self.app.get('/%s' % file_id)
         self.assertEquals(content.status_code, 200)
         self.assertIn('russkoe nazvanie.jpg', content.headers['Content-Disposition'])
+
+    def test_pending_404(self):
+        file_path = './tests/jpg.jpg'
+        file_id = self.put_file(file_path)
+        self.db.fs.files.update({'_id': file_id}, {'$set': {'pending': True}})
+        
+        r = self.app.get('/%s' % file_id, status=404)
