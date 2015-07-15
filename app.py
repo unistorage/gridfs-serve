@@ -47,6 +47,9 @@ def serve_request(request, connection, _id=None):
     if getattr(file, 'pending', False):
         abort(404)
 
+    if getattr(file, 'blocked', False):
+        abort(404)
+
     if request.if_modified_since:
         if request.if_modified_since > file.uploadDate:
             return Response(status=304)

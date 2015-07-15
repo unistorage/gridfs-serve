@@ -95,3 +95,10 @@ class Test(unittest.TestCase):
         self.db.fs.files.update({'_id': file_id}, {'$set': {'pending': True}})
 
         self.app.get('/%s' % file_id, status=404)
+
+    def test_blocked_404(self):
+        file_path = './tests/jpg.jpg'
+        file_id = self.put_file(file_path)
+        self.db.fs.files.update({'_id': file_id}, {'$set': {'blocked': True}})
+
+        self.app.get('/%s' % file_id, status=404)
