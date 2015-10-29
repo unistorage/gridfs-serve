@@ -47,7 +47,7 @@ def serve_request(request, connection, _id=None):
     if getattr(file, 'pending', False):
         abort(404)
 
-    if getattr(file, 'blocked', False):
+    if getattr(file, 'deleted', False):
         abort(404)
 
     if request.if_modified_since:

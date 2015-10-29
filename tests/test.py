@@ -96,9 +96,9 @@ class Test(unittest.TestCase):
 
         self.app.get('/%s' % file_id, status=404)
 
-    def test_blocked_404(self):
+    def test_deleted_404(self):
         file_path = './tests/jpg.jpg'
         file_id = self.put_file(file_path)
-        self.db.fs.files.update({'_id': file_id}, {'$set': {'blocked': True}})
+        self.db.fs.files.update({'_id': file_id}, {'$set': {'deleted': True}})
 
         self.app.get('/%s' % file_id, status=404)
