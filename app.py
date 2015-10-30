@@ -4,7 +4,7 @@ from gridfs import GridFS
 from werkzeug.wsgi import wrap_file, ClosingIterator
 from werkzeug.wrappers import Request, Response
 from werkzeug.routing import Map, Rule
-from werkzeug.exceptions import abort, NotFound, HTTPException
+from werkzeug.exceptions import abort, HTTPException
 from unidecode import unidecode
 
 import settings
@@ -43,8 +43,11 @@ def serve_request(request, connection, _id=None):
         file = fs.get(_id)
     except:
         abort(404)
-    
+
     if getattr(file, 'pending', False):
+        abort(404)
+
+    if getattr(file, 'deleted', False):
         abort(404)
 
     if request.if_modified_since:
@@ -59,8 +62,9 @@ def serve_request(request, connection, _id=None):
     # http://greenbytes.de/tech/tc2231/#encoding-2231-fb
     rfc2231_filename = encode_rfc2231(filename.encode('utf-8'), 'UTF-8')
     transliterated_filename = unidecode(filename)
-    content_disposition = 'inline; filename="%s"; filename*=%s;' % \
-            (transliterated_filename, rfc2231_filename)
+    content_disposition = 'inline; filename="%s"; filename*=%s;' % (
+        transliterated_filename, rfc2231_filename
+        )
 
     headers = {'Content-Disposition': content_disposition}
 
@@ -99,7 +103,7 @@ def app(request):
         endpoint, args = urls.match()
     except HTTPException, e:
         return e
-    
+
     connection = get_mongodb_connection()
     try:
         return serve_request(request, connection, **args)
